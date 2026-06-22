@@ -1,10 +1,17 @@
 const http  = require('http');
 const https = require('https');
+const http2 = require('http');
 const url   = require('url');
 
-const PORT     = process.env.PORT || 8080;
-const TOKEN    = process.env.XBZ_TOKEN || '54238';
-const XBZ_HOST = 'api.xbz.com.br';
+const PORT  = process.env.PORT || 8080;
+const TOKEN = process.env.XBZ_TOKEN || '54238';
+
+// Tenta múltiplos hosts/endpoints da XBZ
+const XBZ_HOSTS = [
+  { host: 'api.xbz.com.br',       port: 443,  ssl: true  },
+  { host: 'www.xbzbrindes.com.br', port: 443,  ssl: true  },
+  { host: 'xbzbrindes.com.br',     port: 443,  ssl: true  },
+];
 
 function setCORS(res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
@@ -12,21 +19,23 @@ function setCORS(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-function httpsGet(targetUrl) {
+function httpsGet(targetUrl, useSsl) {
   return new Promise((resolve, reject) => {
-    const parsed = url.parse(targetUrl);
+    const parsed  = url.parse(targetUrl);
     const options = {
       hostname: parsed.hostname,
-      port:     parsed.port || 443,
+      port:     parsed.port || (useSsl ? 443 : 80),
       path:     parsed.path,
       method:   'GET',
       headers: {
-        'User-Agent':  'Mozilla/5.0 (compatible; FortuneBrindes/2.0)',
-        'Accept':      'application/json, image/*, */*',
+        'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept':          'application/json, */*',
         'Accept-Language': 'pt-BR,pt;q=0.9',
+        'Referer':         'https://www.fortunebrindes.com.br/',
       }
     };
-    const req = https.request(options, (res) => {
+    const lib = useSsl ? https : require('http');
+    const req = lib.request(options, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => resolve({
@@ -36,7 +45,7 @@ function httpsGet(targetUrl) {
       }));
     });
     req.on('error', reject);
-    req.setTimeout(20000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('timeout')); });
     req.end();
   });
 }
@@ -50,48 +59,65 @@ function jsonResponse(res, status, data) {
   res.end(body);
 }
 
+// Tenta encontrar qual endpoint XBZ funciona
+async function xbzRequest(path, params) {
+  const qs = new URLSearchParams({ token: TOKEN, ...params }).toString();
+  
+  const urlsToTry = [
+    `https://api.xbz.com.br${path}?${qs}`,
+    `https://api.xbz.com.br/api${path}?${qs}`,
+    `https://www.xbzbrindes.net${path}?${qs}`,
+  ];
+
+  let lastError = null;
+  for (const u of urlsToTry) {
+    try {
+      console.log('Tentando:', u);
+      const r = await httpsGet(u, true);
+      console.log('Status:', r.status, 'Body:', r.body.toString().substring(0, 100));
+      if (r.status < 500) return r;
+    } catch(e) {
+      console.log('Erro em', u, ':', e.message);
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('Todos os endpoints falharam');
+}
+
 const server = http.createServer(async (req, res) => {
   const parsed   = url.parse(req.url, true);
   const pathname = parsed.pathname;
   const query    = parsed.query;
 
   setCORS(res);
-
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  // Health check
+  // Health
   if (pathname === '/' || pathname === '/health') {
     return jsonResponse(res, 200, {
-      status: 'online',
-      service: 'XBZ Proxy — Fortune Brindes',
-      version: '2.1',
+      status: 'online', service: 'XBZ Proxy — Fortune Brindes', version: '2.2',
       token: TOKEN ? TOKEN.substring(0,3)+'****' : 'não definido',
-      endpoints: ['/v1/produto', '/v1/categoria', '/v1/produto/:codigo', '/img', '/debug']
+      endpoints: ['/v1/produto', '/v1/categoria', '/img', '/debug']
     });
   }
 
-  // DEBUG — testa a API XBZ e retorna resposta bruta
+  // Debug completo
   if (pathname === '/debug') {
     const termo = query.search || 'caneta';
+    const qs = new URLSearchParams({ token: TOKEN, search: termo }).toString();
     const results = {};
-    
-    // Testa vários formatos de URL possíveis
     const urls = [
-      `https://${XBZ_HOST}/v1/produto?token=${TOKEN}&search=${termo}`,
-      `https://${XBZ_HOST}/v1/produto?token=${TOKEN}&busca=${termo}`,
-      `https://${XBZ_HOST}/v1/produtos?token=${TOKEN}&search=${termo}`,
-      `https://${XBZ_HOST}/produtos?token=${TOKEN}&search=${termo}`,
-      `https://${XBZ_HOST}/v1/produto?token=${TOKEN}`,
+      `https://api.xbz.com.br/v1/produto?${qs}`,
+      `https://api.xbz.com.br/v1/produtos?${qs}`,
+      `https://api.xbz.com.br/produtos?${qs}`,
+      `https://api.xbz.com.br/api/v1/produto?${qs}`,
+      `https://www.xbzbrindes.net/v1/produto?${qs}`,
+      `https://xbzbrindes.com.br/v1/produto?${qs}`,
     ];
-    
     for (const u of urls) {
       try {
-        const r = await httpsGet(u);
-        results[u] = {
-          status: r.status,
-          body_preview: r.body.toString('utf8').substring(0, 200)
-        };
-        if (r.status === 200) break; // parar no primeiro que funcionar
+        const r = await httpsGet(u, true);
+        results[u] = { status: r.status, preview: r.body.toString('utf8').substring(0, 300) };
       } catch(e) {
         results[u] = { error: e.message };
       }
@@ -102,26 +128,16 @@ const server = http.createServer(async (req, res) => {
   // Busca produtos
   if (pathname === '/v1/produto') {
     try {
-      const params = new URLSearchParams();
-      params.set('token', TOKEN);
-      if (query.search)    params.set('search', query.search);
-      if (query.busca)     params.set('busca', query.busca);
-      if (query.categoria) params.set('categoria', query.categoria);
-      if (query.limit)     params.set('limit', query.limit);
-      if (query.page)      params.set('page', query.page);
-
-      const targetUrl = `https://${XBZ_HOST}/v1/produto?${params.toString()}`;
-      console.log('Buscando:', targetUrl);
-      
-      const r = await httpsGet(targetUrl);
-      console.log('Status XBZ:', r.status);
-      console.log('Body preview:', r.body.toString('utf8').substring(0, 200));
-      
+      const params = {};
+      if (query.search)    params.search    = query.search;
+      if (query.busca)     params.busca     = query.busca;
+      if (query.categoria) params.categoria = query.categoria;
+      if (query.limit)     params.limit     = query.limit;
+      const r = await xbzRequest('/v1/produto', params);
       res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(r.body);
-    } catch (e) {
-      console.error('Erro busca produto:', e.message);
-      jsonResponse(res, 500, { erro: e.message, stack: e.stack });
+    } catch(e) {
+      jsonResponse(res, 500, { erro: e.message });
     }
     return;
   }
@@ -129,23 +145,10 @@ const server = http.createServer(async (req, res) => {
   // Categorias
   if (pathname === '/v1/categoria') {
     try {
-      const r = await httpsGet(`https://${XBZ_HOST}/v1/categoria?token=${TOKEN}`);
+      const r = await xbzRequest('/v1/categoria', {});
       res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(r.body);
-    } catch (e) {
-      jsonResponse(res, 500, { erro: e.message });
-    }
-    return;
-  }
-
-  // Detalhe produto
-  const matchProduto = pathname.match(/^\/v1\/produto\/([^/]+)$/);
-  if (matchProduto) {
-    try {
-      const r = await httpsGet(`https://${XBZ_HOST}/v1/produto/${matchProduto[1]}?token=${TOKEN}`);
-      res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(r.body);
-    } catch (e) {
+    } catch(e) {
       jsonResponse(res, 500, { erro: e.message });
     }
     return;
@@ -154,17 +157,13 @@ const server = http.createServer(async (req, res) => {
   // Proxy imagem
   if (pathname === '/img') {
     const imgUrl = query.url;
-    if (!imgUrl) return jsonResponse(res, 400, { erro: 'Parâmetro url obrigatório' });
+    if (!imgUrl) return jsonResponse(res, 400, { erro: 'url obrigatório' });
     try {
-      const r = await httpsGet(imgUrl);
+      const r = await httpsGet(imgUrl, true);
       const ct = r.headers['content-type'] || 'image/jpeg';
-      res.writeHead(r.status, {
-        'Content-Type':  ct,
-        'Cache-Control': 'public, max-age=86400',
-        'Content-Length': r.body.length
-      });
+      res.writeHead(r.status, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' });
       res.end(r.body);
-    } catch (e) {
+    } catch(e) {
       jsonResponse(res, 500, { erro: e.message });
     }
     return;
@@ -174,7 +173,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`✅ XBZ Proxy rodando na porta ${PORT}`);
-  console.log(`   Token XBZ: ${TOKEN}`);
-  console.log(`   Endpoints: /v1/produto | /v1/categoria | /img | /debug`);
+  console.log(`✅ XBZ Proxy v2.2 rodando na porta ${PORT}`);
+  console.log(`   Token: ${TOKEN}`);
 });
