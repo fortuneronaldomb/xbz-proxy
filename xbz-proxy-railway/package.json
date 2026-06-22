@@ -1,0 +1,12 @@
+{
+  "name": "xbz-proxy-fortune",
+  "version": "2.0.0",
+  "description": "Proxy XBZ para Fortune Brindes — Railway",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
