@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fortune Coach — Gerador de Orçamento</title>
+
+<!-- Bibliotecas para PDF e PNG -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --orange: #E8450A;
+  --orange-light: #fff3ef;
+  --dark: #1a1a1a;
+  --gray: #555;
+  --border: #e5e5e5;
+  --radius: 10px;
+}
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f0f0; color: var(--dark); }
+
+/* ── PAINEL DE CONTROLE ── */
+.painel {
+  background: white;
+  border-radius: var(--radius);
+  padding: 24px;
+  margin: 20px auto;
+  max-width: 960px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+}
+.painel h2 { font-size: 18px; color: var(--orange); margin-bottom: 20px; display:flex; align-items:center; gap:8px; }
+.painel h2::before { content:''; display:block; width:4px; height:20px; background:var(--orange); border-radius:2px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label { font-size: 12px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: .04em; }
+.form-group input, .form-group select, .form-group textarea {
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--dark);
+  background: #fafafa;
+  transition: border-color .2s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: var(--orange);
+  background: white;
+}
+.full { grid-column: span 2; }
+
+/* ── PRODUTOS ── */
+.produtos-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.produtos-header h3 { font-size: 14px; font-weight: 600; color: var(--dark); }
+.btn-add { background: var(--orange); color:white; border:none; padding:7px 14px; border-radius:7px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:5px; }
+.btn-add:hover { background:#c73a09; }
+
+.produto-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 90px 90px 90px 36px;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #fafafa;
+}
+.produto-row input { border:1.5px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; width:100%; background:white; }
+.produto-row input:focus { outline:none; border-color:var(--orange); }
+.img-preview { width:72px; height:72px; border-radius:6px; object-fit:contain; border:1px solid var(--border); background:#f5f5f5; }
+.img-placeholder { width:72px; height:72px; border-radius:6px; border:1.5px dashed var(--border); display:flex; align-items:center; justify-content:center; font-size:22px; background:#f9f9f9; cursor:pointer; }
+.btn-del { width:32px; height:32px; background:#fee2e2; border:none; border-radius:6px; color:#dc2626; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.btn-del:hover { background:#fca5a5; }
+
+/* ── BUSCA XBZ ── */
+.xbz-section { border:1.5px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; }
+.xbz-header { display:flex; gap:10px; margin-bottom:12px; }
+.xbz-input { flex:1; border:1.5px solid var(--border); border-radius:7px; padding:9px 12px; font-size:14px; }
+.xbz-input:focus { outline:none; border-color:var(--orange); }
+.btn-buscar { background:var(--orange); color:white; border:none; padding:9px 18px; border-radius:7px; font-size:14px; cursor:pointer; white-space:nowrap; }
+.btn-buscar:hover { background:#c73a09; }
+.xbz-url-cfg { display:flex; gap:8px; margin-bottom:10px; }
+.xbz-url-cfg input { flex:1; border:1.5px solid var(--border); border-radius:7px; padding:7px 12px; font-size:12px; color:var(--gray); }
+.xbz-resultados { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; max-height:300px; overflow-y:auto; }
+.xbz-card { border:1.5px solid var(--border); border-radius:8px; padding:10px; cursor:pointer; transition:border-color .2s, box-shadow .2s; background:white; }
+.xbz-card:hover { border-color:var(--orange); box-shadow:0 0 0 3px rgba(232,69,10,.1); }
+.xbz-card img { width:100%; height:90px; object-fit:contain; border-radius:4px; margin-bottom:6px; }
+.xbz-card .xbz-nome { font-size:12px; font-weight:600; color:var(--dark); line-height:1.3; margin-bottom:4px; }
+.xbz-card .xbz-preco { font-size:12px; color:var(--orange); font-weight:700; }
+.xbz-loading { text-align:center; color:var(--gray); font-size:13px; padding:20px; }
+.xbz-cfg-toggle { font-size:12px; color:var(--orange); cursor:pointer; text-decoration:underline; margin-bottom:8px; display:inline-block; }
+
+/* ── BOTÕES DE AÇÃO ── */
+.acoes { display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; }
+.btn-acao {
+  display:flex; align-items:center; gap:6px;
+  padding:11px 20px; border-radius:8px; border:none; cursor:pointer;
+  font-size:14px; font-weight:600; transition:all .15s;
+}
+.btn-preview { background:var(--orange); color:white; }
+.btn-preview:hover { background:#c73a09; }
+.btn-png { background:#2563eb; color:white; }
+.btn-png:hover { background:#1d4ed8; }
+.btn-pdf { background:#16a34a; color:white; }
+.btn-pdf:hover { background:#15803d; }
+
+/* ── ORÇAMENTO VISUAL (para exportar) ── */
+#orcamento-preview {
+  display:none;
+  background:white;
+}
+.orc-wrap {
+  width: 794px;
+  min-height: 1050px;
+  background: white;
+  padding: 40px 44px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  position: relative;
+}
+
+/* Cabeçalho */
+.orc-header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:20px; border-bottom:4px solid var(--orange); margin-bottom:28px; }
+.orc-logo { display:flex; align-items:center; gap:12px; }
+.orc-logo-icon { width:52px; height:52px; }
+.orc-logo-text .nome { font-size:26px; font-weight:900; letter-spacing:2px; color:var(--dark); }
+.orc-logo-text .sub { font-size:9px; letter-spacing:5px; color:#666; margin-top:1px; }
+.orc-contato { text-align:right; font-size:12px; color:#444; line-height:1.9; }
+.orc-contato strong { color:var(--dark); }
+
+/* Título + produto destaque */
+.orc-hero { display:flex; justify-content:space-between; gap:28px; margin-bottom:28px; }
+.orc-titulo h1 { font-size:32px; font-weight:900; color:var(--dark); }
+.orc-titulo h2 { font-size:14px; color:var(--orange); font-weight:700; letter-spacing:1px; margin-top:2px; }
+.orc-titulo .barra { width:44px; height:4px; background:var(--orange); margin:10px 0 16px; }
+.orc-titulo p { font-size:13px; color:#444; line-height:1.6; max-width:320px; }
+.orc-img-hero { width:180px; height:180px; object-fit:contain; border-radius:8px; flex-shrink:0; }
+.orc-img-hero-placeholder { width:180px; height:180px; background:linear-gradient(135deg,#ff7043,var(--orange)); border-radius:8px; display:flex; align-items:center; justify-content:center; color:white; font-size:13px; text-align:center; padding:12px; flex-shrink:0; }
+
+/* Tabela */
+.orc-table { width:100%; border-collapse:collapse; margin-bottom:22px; font-size:12.5px; }
+.orc-table thead tr { background:var(--orange); color:white; }
+.orc-table th { padding:10px 10px; text-align:center; font-weight:700; font-size:11px; letter-spacing:.5px; }
+.orc-table td { padding:10px; border-bottom:1px solid #eee; vertical-align:middle; }
+.orc-table tbody tr:last-child td { border-bottom:none; }
+.orc-prod-img { width:64px; height:64px; object-fit:contain; border-radius:6px; }
+.orc-prod-img-ph { width:64px; height:64px; background:linear-gradient(135deg,#ff7043,var(--orange)); border-radius:6px; display:flex; align-items:center; justify-content:center; color:white; font-size:11px; text-align:center; }
+.orc-prod-nome { font-weight:700; font-size:13px; margin-bottom:3px; }
+.orc-prod-desc { font-size:11px; color:#666; line-height:1.4; }
+.orc-preco { color:var(--orange); font-weight:800; font-size:14px; text-align:center; }
+.orc-total-val { font-weight:700; text-align:center; }
+
+/* Info + Condições */
+.orc-info-row { display:flex; gap:16px; margin-bottom:20px; }
+.orc-info-box { flex:1.2; background:var(--orange-light); border-radius:8px; padding:14px 16px; }
+.orc-info-box h4 { color:var(--orange); font-size:12px; font-weight:800; margin-bottom:8px; display:flex; align-items:center; gap:5px; }
+.orc-info-box ul { list-style:none; }
+.orc-info-box ul li { font-size:11.5px; color:#333; line-height:1.7; padding-left:12px; position:relative; }
+.orc-info-box ul li::before { content:'•'; color:var(--orange); position:absolute; left:0; font-weight:bold; }
+.orc-conds { flex:1; display:flex; flex-direction:column; gap:8px; }
+.orc-cond { background:#f9f9f9; border-radius:7px; padding:10px 12px; display:flex; gap:8px; border-left:3px solid var(--orange); }
+.orc-cond-icon { font-size:16px; flex-shrink:0; }
+.orc-cond h5 { font-size:10px; color:var(--orange); font-weight:800; letter-spacing:.4px; margin-bottom:1px; }
+.orc-cond p { font-size:11px; color:#444; line-height:1.4; }
+
+/* Observações */
+.orc-obs { display:flex; gap:12px; background:#f5f5f5; border-radius:8px; padding:14px 16px; margin-bottom:24px; }
+.orc-obs h4 { font-size:12px; font-weight:800; margin-bottom:6px; }
+.orc-obs ul { list-style:none; }
+.orc-obs ul li { font-size:11.5px; color:#444; line-height:1.8; padding-left:12px; position:relative; }
+.orc-obs ul li::before { content:'•'; color:#555; position:absolute; left:0; }
+
+/* Rodapé */
+.orc-footer { text-align:center; border-top:2px solid #eee; padding-top:18px; }
+.orc-footer p { font-size:13px; color:#444; margin-bottom:6px; }
+.orc-footer .assinatura { font-family:Georgia,serif; font-style:italic; font-size:20px; color:var(--orange); }
+.orc-footer .equipe { font-size:13px; font-weight:700; color:var(--dark); margin-top:3px; }
+.orc-footer .site { font-size:11px; color:#888; margin-top:6px; }
+
+/* Totais */
+.orc-totais { text-align:right; padding:12px 16px; background:var(--orange-light); border-radius:8px; margin-bottom:16px; }
+.orc-totais .total-label { font-size:12px; color:#666; }
+.orc-totais .total-val { font-size:22px; font-weight:900; color:var(--orange); }
+
+/* ── STATUS ── */
+.status-bar { background:#1a1a1a; color:white; padding:10px 16px; border-radius:8px; font-size:13px; margin-top:12px; display:none; align-items:center; gap:8px; }
+.status-bar.show { display:flex; }
+.spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,.3); border-top-color:white; border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+@media print { .painel, .acoes, .status-bar { display:none !important; } #orcamento-preview { display:block !important; } }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- PAINEL DE CONTROLE                                      -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="painel">
+  <h2>Gerador de Orçamento — Fortune Brindes</h2>
+
+  <!-- Dados do orçamento -->
+  <div class="form-grid">
+    <div class="form-group">
+      <label>Empresa emissora</label>
+      <select id="empresa">
+        <option value="fortune">Fortune Brindes</option>
+        <option value="evolute">Evolute Brindes</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Vendedor</label>
+      <select id="vendedor">
+        <option>Douglas Costa</option>
+        <option>Isaac Branco</option>
+        <option>Ana Souza</option>
+        <option>Carlos Lima</option>
+        <option>Ronaldo</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Nome do cliente</label>
+      <input id="cliente-nome" type="text" placeholder="Ex: Empresa ABC Ltda">
+    </div>
+    <div class="form-group">
+      <label>Validade da proposta</label>
+      <input id="validade" type="text" value="7 dias" placeholder="Ex: 7 dias">
+    </div>
+    <div class="form-group">
+      <label>Condição de pagamento</label>
+      <input id="pagamento" type="text" value="50% entrada + 50% na retirada">
+    </div>
+    <div class="form-group">
+      <label>Prazo de produção</label>
+      <input id="prazo" type="text" value="5 a 10 dias úteis após aprovação da arte">
+    </div>
+    <div class="form-group full">
+      <label>Observações extras</label>
+      <textarea id="obs-extra" rows="2" placeholder="Observações adicionais para o cliente..."></textarea>
+    </div>
+  </div>
+
+  <!-- Busca XBZ -->
+  <div class="xbz-section">
+    <div class="produtos-header" style="margin-bottom:8px">
+      <h3>🔍 Buscar produto no catálogo XBZ</h3>
+      <span class="xbz-cfg-toggle" onclick="toggleConfig()">⚙ configurar URL do proxy</span>
+    </div>
+    <div id="xbz-cfg" style="display:none; margin-bottom:10px;">
+      <div class="xbz-url-cfg">
+        <input id="proxy-url" type="text" value="https://xbz-proxy-production.up.railway.app" placeholder="URL do proxy Railway">
+        <button class="btn-buscar" onclick="salvarProxy()" style="padding:7px 12px; font-size:12px;">Salvar</button>
+      </div>
+    </div>
+    <div class="xbz-header">
+      <input class="xbz-input" id="xbz-busca" type="text" placeholder="Ex: caneta metal, squeeze, kit executivo..." 
+             onkeydown="if(event.key==='Enter') buscarXBZ()">
+      <button class="btn-buscar" onclick="buscarXBZ()">🔎 Buscar</button>
+    </div>
+    <div id="xbz-resultados" class="xbz-resultados"></div>
+  </div>
+
+  <!-- Lista de produtos do orçamento -->
+  <div class="produtos-header">
+    <h3>📦 Produtos do orçamento</h3>
+    <button class="btn-add" onclick="adicionarProduto()">+ Adicionar produto manualmente</button>
+  </div>
+  <div id="lista-produtos"></div>
+
+  <!-- Botões de ação -->
+  <div class="acoes">
+    <button class="btn-acao btn-preview" onclick="gerarPreview()">👁 Visualizar orçamento</button>
+    <button class="btn-acao btn-png" onclick="gerarPNG()">📷 Baixar PNG (WhatsApp)</button>
+    <button class="btn-acao btn-pdf" onclick="gerarPDF()">📄 Baixar PDF</button>
+  </div>
+  <div class="status-bar" id="status-bar">
+    <div class="spinner"></div>
+    <span id="status-msg">Gerando...</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- ORÇAMENTO VISUAL (renderizado para exportar)           -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="orcamento-preview">
+  <div class="orc-wrap" id="orc-conteudo">
+
+    <!-- Cabeçalho -->
+    <div class="orc-header">
+      <div class="orc-logo">
+        <svg class="orc-logo-icon" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="30" cy="30" r="28" fill="#E8450A"/>
+          <path d="M18 30 Q30 12 42 30 Q30 48 18 30Z" fill="white" opacity="0.9"/>
+          <path d="M15 26 Q22 18 30 22 Q22 38 15 26Z" fill="white" opacity="0.5"/>
+        </svg>
+        <div class="orc-logo-text">
+          <div class="nome" id="orc-empresa-nome">FORTUNE</div>
+          <div class="sub" id="orc-empresa-sub">BRINDES CORPORATIVOS</div>
+        </div>
+      </div>
+      <div class="orc-contato" id="orc-contato-dados">
+        <div>📞 <strong>(61) 3201-1483</strong></div>
+        <div>✉️ contato@fortunebrindes.com.br</div>
+        <div style="font-size:11px; color:#666;">QE 40 Rua 03, Lote 11 — Polo de Modas</div>
+        <div style="font-size:11px; color:#666;">Guará 2 — Brasília/DF — CEP 71070-503</div>
+      </div>
+    </div>
+
+    <!-- Hero -->
+    <div class="orc-hero">
+      <div class="orc-titulo">
+        <h1>ORÇAMENTO</h1>
+        <h2 id="orc-empresa-label">FORTUNE BRINDES</h2>
+        <div class="barra"></div>
+        <p id="orc-cliente-txt">Prezado(a) Cliente,<br>
+        Agradecemos seu contato e apresentamos abaixo nosso orçamento conforme solicitado.</p>
+      </div>
+      <div id="orc-img-hero-wrap">
+        <div class="orc-img-hero-placeholder" id="orc-img-hero-ph">Imagem<br>do produto</div>
+      </div>
+    </div>
+
+    <!-- Tabela de produtos -->
+    <table class="orc-table">
+      <thead>
+        <tr>
+          <th style="width:80px">PRODUTO</th>
+          <th style="text-align:left">DESCRIÇÃO</th>
+          <th>QUANTIDADE</th>
+          <th>VALOR UNIT.</th>
+          <th>VALOR TOTAL</th>
+        </tr>
+      </thead>
+      <tbody id="orc-tbody"></tbody>
+    </table>
+
+    <!-- Totais -->
+    <div class="orc-totais" id="orc-totais-wrap" style="display:none">
+      <div class="total-label">TOTAL GERAL</div>
+      <div class="total-val" id="orc-total-val">R$ —</div>
+    </div>
+
+    <!-- Informações + Condições -->
+    <div class="orc-info-row">
+      <div class="orc-info-box">
+        <h4>ℹ️ INFORMAÇÕES IMPORTANTES</h4>
+        <ul>
+          <li>Personalização: Conforme sua marca</li>
+          <li>Impressão: Silk Screen / Laser / Transfer</li>
+          <li>Acabamento: Conforme descrição do produto</li>
+          <li>Os valores podem variar conforme cor e quantidade</li>
+        </ul>
+      </div>
+      <div class="orc-conds">
+        <div class="orc-cond">
+          <div class="orc-cond-icon">💲</div>
+          <div>
+            <h5>CONDIÇÕES</h5>
+            <p>Valores conforme tabela de quantidade.</p>
+          </div>
+        </div>
+        <div class="orc-cond">
+          <div class="orc-cond-icon">📦</div>
+          <div>
+            <h5>PRAZO DE PRODUÇÃO</h5>
+            <p id="orc-prazo-txt">5 a 10 dias úteis após aprovação da arte</p>
+          </div>
+        </div>
+        <div class="orc-cond">
+          <div class="orc-cond-icon">🚚</div>
+          <div>
+            <h5>FRETE</h5>
+            <p>Frete não incluso. Cotação mediante CEP.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Observações -->
+    <div class="orc-obs">
+      <div style="font-size:28px">📋</div>
+      <div>
+        <h4>OBSERVAÇÕES</h4>
+        <ul id="orc-obs-lista">
+          <li>Valores válidos por <span id="orc-validade-txt">7 dias</span>.</li>
+          <li>Personalização inclusa conforme especificado.</li>
+          <li id="orc-prazo-obs">Prazo de produção: 5 a 10 dias úteis após aprovação da arte.</li>
+          <li id="orc-pagamento-obs">Condição de pagamento: 50% de entrada e 50% na retirada/embarque.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Rodapé -->
+    <div class="orc-footer">
+      <p>Ficamos à disposição para quaisquer dúvidas!</p>
+      <div class="assinatura">Atenciosamente,</div>
+      <div class="equipe" id="orc-vendedor-nome">Equipe Fortune Brindes</div>
+      <div class="site" id="orc-site">fortunebrindes.com.br | (61) 3201-1483</div>
+    </div>
+
+  </div><!-- /orc-wrap -->
+</div><!-- /orcamento-preview -->
+
+<script>
+// ═══════════════════════════════════════════════════
+// CONFIGURAÇÃO
+// ═══════════════════════════════════════════════════
+let PROXY_URL = localStorage.getItem('xbz_proxy_url') || 'https://xbz-proxy-production.up.railway.app';
+let produtos = [];
+
+function toggleConfig() {
+  const el = document.getElementById('xbz-cfg');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('proxy-url').value = PROXY_URL;
+}
+function salvarProxy() {
+  PROXY_URL = document.getElementById('proxy-url').value.trim().replace(/\/$/, '');
+  localStorage.setItem('xbz_proxy_url', PROXY_URL);
+  document.getElementById('xbz-cfg').style.display = 'none';
+  mostrarStatus('✅ URL do proxy salva!', false);
+}
+
+// ═══════════════════════════════════════════════════
+// BUSCA XBZ
+// ═══════════════════════════════════════════════════
+async function buscarXBZ() {
+  const termo = document.getElementById('xbz-busca').value.trim();
+  if (!termo) return;
+  const res = document.getElementById('xbz-resultados');
+  res.innerHTML = '<div class="xbz-loading">🔍 Buscando no catálogo XBZ...</div>';
+  try {
+    const url = `${PROXY_URL}/v1/produto?search=${encodeURIComponent(termo)}&limit=20`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const lista = Array.isArray(data) ? data : (data.produtos || data.data || []);
+    if (!lista.length) { res.innerHTML = '<div class="xbz-loading">Nenhum produto encontrado.</div>'; return; }
+    res.innerHTML = '';
+    lista.forEach(p => {
+      const imgUrl = p.imagem || p.img || p.foto || '';
+      const proxyImg = imgUrl ? `${PROXY_URL}/img?url=${encodeURIComponent(imgUrl)}` : '';
+      const precos = p.precos || p.tabela || [];
+      const menorPreco = precos.length ? Math.min(...precos.map(x => parseFloat(x.preco || x.valor || 0))) : 0;
+      const card = document.createElement('div');
+      card.className = 'xbz-card';
+      card.innerHTML = `
+        ${proxyImg
+          ? `<img src="${proxyImg}" alt="${p.nome||p.descricao||''}" onerror="this.style.display='none'">`
+          : `<div style="height:90px;background:linear-gradient(135deg,#ff7043,#E8450A);border-radius:4px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;text-align:center;padding:6px">${p.nome||'Produto'}</div>`}
+        <div class="xbz-nome">${(p.nome||p.descricao||'Produto').substring(0,50)}</div>
+        <div class="xbz-preco">${menorPreco > 0 ? 'A partir de R$ '+menorPreco.toFixed(2).replace('.',',') : 'Consultar preço'}</div>
+      `;
+      card.onclick = () => adicionarProdutoXBZ(p, proxyImg);
+      res.appendChild(card);
+    });
+  } catch(e) {
+    res.innerHTML = `<div class="xbz-loading" style="color:#dc2626">⚠ Erro ao conectar no proxy XBZ.<br><small>Configure a URL em ⚙ ou verifique se o proxy está no ar.<br>${e.message}</small></div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// GERENCIAR PRODUTOS
+// ═══════════════════════════════════════════════════
+let prodIdx = 0;
+function adicionarProduto(dados) {
+  const id = prodIdx++;
+  const d = dados || {};
+  const imgSrc = d.img || '';
+  const container = document.getElementById('lista-produtos');
+  const row = document.createElement('div');
+  row.className = 'produto-row';
+  row.dataset.id = id;
+  row.innerHTML = `
+    <div>
+      ${imgSrc
+        ? `<img class="img-preview" id="img-${id}" src="${imgSrc}" onerror="this.style.display='none'">`
+        : `<div class="img-placeholder" onclick="pedirImagem(${id})" title="Colar URL de imagem">🖼️</div>`}
+      <input type="hidden" id="img-url-${id}" value="${imgSrc}">
+    </div>
+    <input type="text" id="nome-${id}" placeholder="Nome do produto" value="${d.nome||''}">
+    <input type="text" id="qtd-${id}" placeholder="Qtd (ex: 100 un)" value="${d.qtd||''}">
+    <input type="text" id="preco-${id}" placeholder="R$ 0,00" value="${d.preco||''}">
+    <input type="text" id="total-${id}" placeholder="R$ 0,00" value="${d.total||''}">
+    <button class="btn-del" onclick="removerProduto(${id})">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function adicionarProdutoXBZ(p, proxyImg) {
+  const precos = p.precos || p.tabela || [];
+  const menorPreco = precos.length ? Math.min(...precos.map(x => parseFloat(x.preco || x.valor || 0))) : 0;
+  adicionarProduto({
+    nome: p.nome || p.descricao || '',
+    qtd: '100 unidades',
+    preco: menorPreco > 0 ? 'R$ ' + menorPreco.toFixed(2).replace('.', ',') : '',
+    total: '',
+    img: proxyImg
+  });
+  document.getElementById('xbz-resultados').innerHTML = '<div class="xbz-loading" style="color:#16a34a">✅ Produto adicionado ao orçamento!</div>';
+  setTimeout(() => document.getElementById('xbz-resultados').innerHTML = '', 2000);
+}
+
+function removerProduto(id) {
+  document.querySelector(`.produto-row[data-id="${id}"]`)?.remove();
+}
+
+function pedirImagem(id) {
+  const url = prompt('Cole a URL da imagem do produto\n(do site da Fortune, Evolute ou XBZ):');
+  if (!url) return;
+  document.getElementById(`img-url-${id}`).value = url;
+  const ph = document.querySelector(`.produto-row[data-id="${id}"] .img-placeholder`);
+  if (ph) {
+    const img = document.createElement('img');
+    img.className = 'img-preview';
+    img.src = url;
+    img.onerror = () => img.alt = '❌';
+    ph.replaceWith(img);
+  }
+}
+
+function coletarProdutos() {
+  const rows = document.querySelectorAll('.produto-row');
+  return Array.from(rows).map(row => {
+    const id = row.dataset.id;
+    return {
+      img:   document.getElementById(`img-url-${id}`)?.value || '',
+      nome:  document.getElementById(`nome-${id}`)?.value || '',
+      qtd:   document.getElementById(`qtd-${id}`)?.value || '',
+      preco: document.getElementById(`preco-${id}`)?.value || '',
+      total: document.getElementById(`total-${id}`)?.value || ''
+    };
+  }).filter(p => p.nome);
+}
+
+// ═══════════════════════════════════════════════════
+// MONTAR ORÇAMENTO VISUAL
+// ═══════════════════════════════════════════════════
+function montarOrcamento() {
+  const empresa  = document.getElementById('empresa').value;
+  const vendedor = document.getElementById('vendedor').value;
+  const cliente  = document.getElementById('cliente-nome').value || 'Cliente';
+  const validade = document.getElementById('validade').value;
+  const pagamento= document.getElementById('pagamento').value;
+  const prazo    = document.getElementById('prazo').value;
+  const obsExtra = document.getElementById('obs-extra').value;
+  const prods    = coletarProdutos();
+
+  // Empresa
+  const isEvolute = empresa === 'evolute';
+  const corPrimaria = isEvolute ? '#C0392B' : '#E8450A';
+  document.querySelectorAll('[style*="E8450A"], [style*="orange"]').forEach(el => {
+    el.style.color = corPrimaria;
+  });
+  document.getElementById('orc-empresa-nome').textContent   = isEvolute ? 'EVOLUTE' : 'FORTUNE';
+  document.getElementById('orc-empresa-sub').textContent    = 'BRINDES CORPORATIVOS';
+  document.getElementById('orc-empresa-label').textContent  = isEvolute ? 'EVOLUTE BRINDES' : 'FORTUNE BRINDES';
+  document.getElementById('orc-contato-dados').innerHTML = isEvolute
+    ? `<div>📞 <strong>(61) 3047-5599</strong></div><div>✉️ contato@evolutebrindes.com.br</div><div style="font-size:11px;color:#666">QE 40, Rua 13, Lote 06, Loja 01</div><div style="font-size:11px;color:#666">Polo de Modas — Guará II — CEP 71070-513</div>`
+    : `<div>📞 <strong>(61) 3201-1483</strong></div><div>✉️ contato@fortunebrindes.com.br</div><div style="font-size:11px;color:#666">QE 40 Rua 03, Lote 11 — Polo de Modas</div><div style="font-size:11px;color:#666">Guará 2 — Brasília/DF — CEP 71070-503</div>`;
+
+  // Cliente
+  document.getElementById('orc-cliente-txt').innerHTML = `<strong>Prezado(a) ${cliente},</strong><br>Agradecemos seu contato e apresentamos abaixo nosso orçamento conforme solicitado.`;
+
+  // Vendedor
+  document.getElementById('orc-vendedor-nome').textContent = vendedor;
+  document.getElementById('orc-site').textContent = isEvolute
+    ? 'evolutebrindes.com.br | (61) 3047-5599'
+    : 'fortunebrindes.com.br | (61) 3201-1483';
+
+  // Prazo e validade
+  document.getElementById('orc-prazo-txt').textContent  = prazo;
+  document.getElementById('orc-validade-txt').textContent = validade;
+  document.getElementById('orc-prazo-obs').textContent   = `Prazo de produção: ${prazo}.`;
+  document.getElementById('orc-pagamento-obs').textContent = `Condição de pagamento: ${pagamento}.`;
+
+  // Obs extra
+  if (obsExtra) {
+    const li = document.createElement('li');
+    li.textContent = obsExtra;
+    document.getElementById('orc-obs-lista').appendChild(li);
+  }
+
+  // Imagem hero (primeiro produto com imagem)
+  const heroWrap = document.getElementById('orc-img-hero-wrap');
+  const primComImg = prods.find(p => p.img);
+  if (primComImg) {
+    heroWrap.innerHTML = `<img class="orc-img-hero" src="${primComImg.img}" alt="${primComImg.nome}" onerror="this.style.display='none'">`;
+  } else {
+    heroWrap.innerHTML = `<div class="orc-img-hero-placeholder">${prods[0]?.nome || 'Produto'}</div>`;
+  }
+
+  // Tabela
+  const tbody = document.getElementById('orc-tbody');
+  tbody.innerHTML = '';
+  let totalGeral = 0;
+  prods.forEach(p => {
+    const totalNum = parseFloat(p.total.replace(/[^0-9,.]/g,'').replace(',','.')) || 0;
+    if (totalNum > 0) totalGeral += totalNum;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="text-align:center">
+        ${p.img
+          ? `<img class="orc-prod-img" src="${p.img}" alt="${p.nome}" onerror="this.style.display='none'">`
+          : `<div class="orc-prod-img-ph">${p.nome.substring(0,12)}</div>`}
+      </td>
+      <td><div class="orc-prod-nome">${p.nome}</div></td>
+      <td style="text-align:center">${p.qtd}</td>
+      <td class="orc-preco">${p.preco}</td>
+      <td class="orc-total-val">${p.total || '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Total geral
+  const totaisWrap = document.getElementById('orc-totais-wrap');
+  if (totalGeral > 0) {
+    totaisWrap.style.display = 'block';
+    document.getElementById('orc-total-val').textContent = 'R$ ' + totalGeral.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  } else {
+    totaisWrap.style.display = 'none';
+  }
+
+  document.getElementById('orcamento-preview').style.display = 'block';
+}
+
+// ═══════════════════════════════════════════════════
+// PREVIEW
+// ═══════════════════════════════════════════════════
+function gerarPreview() {
+  montarOrcamento();
+  document.getElementById('orc-conteudo').scrollIntoView({ behavior:'smooth' });
+}
+
+// ═══════════════════════════════════════════════════
+// GERAR PNG
+// ═══════════════════════════════════════════════════
+async function gerarPNG() {
+  mostrarStatus('Gerando imagem PNG...', true);
+  montarOrcamento();
+  await new Promise(r => setTimeout(r, 600));
+  try {
+    const el = document.getElementById('orc-conteudo');
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false
+    });
+    const link = document.createElement('a');
+    const cliente = document.getElementById('cliente-nome').value || 'orcamento';
+    link.download = `orcamento-${cliente.replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    mostrarStatus('✅ PNG gerado e baixado!', false);
+  } catch(e) {
+    mostrarStatus('❌ Erro ao gerar PNG: ' + e.message, false);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// GERAR PDF
+// ═══════════════════════════════════════════════════
+async function gerarPDF() {
+  mostrarStatus('Gerando PDF...', true);
+  montarOrcamento();
+  await new Promise(r => setTimeout(r, 600));
+  try {
+    const { jsPDF } = window.jspdf;
+    const el = document.getElementById('orc-conteudo');
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false
+    });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const pdfW = pdf.internal.pageSize.getWidth();
+    const pdfH = pdf.internal.pageSize.getHeight();
+    const imgW = canvas.width;
+    const imgH = canvas.height;
+    const ratio = pdfW / imgW;
+    const totalH = imgH * ratio;
+
+    if (totalH <= pdfH) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, totalH);
+    } else {
+      // Múltiplas páginas
+      let posY = 0;
+      while (posY < totalH) {
+        if (posY > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -posY, pdfW, totalH);
+        posY += pdfH;
+      }
+    }
+    const cliente = document.getElementById('cliente-nome').value || 'orcamento';
+    pdf.save(`orcamento-${cliente.replace(/\s+/g,'-')}-${new Date().toISOString().slice(0,10)}.pdf`);
+    mostrarStatus('✅ PDF gerado e baixado!', false);
+  } catch(e) {
+    mostrarStatus('❌ Erro ao gerar PDF: ' + e.message, false);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// STATUS
+// ═══════════════════════════════════════════════════
+function mostrarStatus(msg, loading) {
+  const bar = document.getElementById('status-bar');
+  bar.classList.add('show');
+  document.getElementById('status-msg').textContent = msg;
+  bar.querySelector('.spinner').style.display = loading ? 'block' : 'none';
+  if (!loading) setTimeout(() => bar.classList.remove('show'), 4000);
+}
+
+// Init — adiciona 1 produto em branco
+adicionarProduto();
+</script>
+</body>
+</html>
